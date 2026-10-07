@@ -241,7 +241,17 @@ table.dt .trow td{border-top:2px solid var(--border);font-weight:600;color:var(-
 #hTable th.h-sticky-desc{position:sticky;left:82px;background:var(--surface);z-index:3;min-width:200px}
 #hTable th.h-sticky-emp{position:sticky;left:304px;background:var(--surface);z-index:3;min-width:130px}
 #hTable th.h-sticky-centro{position:sticky;left:436px;background:var(--surface);z-index:3;min-width:140px}
+/* DRE por Centro de Custo — cabeçalho fixo (sticky top, alinhado com a topbar) */
+/* .tbl-scroll{overflow-x:auto} força overflow-y:auto implícito (quirk do CSS quando só
+   um eixo é definido), o que cria um contexto de rolagem próprio do tamanho exato do
+   conteúdo — e por isso o sticky nunca "gruda" (não há rolagem de verdade dentro dele).
+   .cc-scroll reverte isso só para a aba DRE por Centro de Custo, para o sticky
+   funcionar relativo à rolagem real da página (mesmo contexto da topbar). */
+.cc-scroll{overflow-y:visible}
+#ccTable thead th{position:sticky;top:57px;background:var(--surface);z-index:5}
+#ccTable thead th:first-child{left:0;z-index:6}
 </style>
+
 </head>
 <body>
 
@@ -254,10 +264,10 @@ table.dt .trow td{border-top:2px solid var(--border);font-weight:600;color:var(-
   <div class="nav-group">Análise</div>
   <a class="nav-item active" onclick="nav('visao')" href="#">⬡ Visão Executiva</a>
   <a class="nav-item" onclick="nav('dre')" href="#">📊 DRE Gerencial</a>
+  <a class="nav-item" onclick="nav('cc')" href="#">📍 DRE por Centro de Custo</a>
   <a class="nav-item" onclick="nav('balanco')" href="#">⚖️ Balanço</a>
   <a class="nav-item" onclick="nav('kpi')" href="#">🎯 KPIs</a>
   <div class="nav-group">Detalhes</div>
-  <a class="nav-item" onclick="nav('cc')" href="#">📍 Centro de Custo</a>
   <a class="nav-item" onclick="nav('comparativo')" href="#">🏪 Comparativo Lojas</a>
   <a class="nav-item" onclick="nav('historico')" href="#">📈 Histórico</a>
   <a class="nav-item" onclick="nav('horizontal')" href="#">📐 Análise Horizontal</a>
@@ -359,12 +369,20 @@ table.dt .trow td{border-top:2px solid var(--border);font-weight:600;color:var(-
 
   <!-- CC -->
   <section id="cc" class="section">
-    <div class="sec-title">Centro de Custo</div>
-    <div class="sec-sub">Resultado por segmento de negócio</div>
-    <div class="emp-tabs" id="ccTabs"></div>
-    <div class="charts-1"><div class="chart-card"><div class="chart-lbl" style="--c:var(--accent2)">Resultado por Centro</div><div class="chart-wrap tall"><canvas id="chartCC"></canvas></div></div></div>
-    <div class="tbl-card"><div class="tbl-head"><span>Detalhamento</span></div><div class="tbl-scroll"><table class="dt" id="ccTable"></table></div></div>
+    <div class="sec-title">DRE por Centro de Custo</div>
+    <div class="sec-sub" id="ccSub">Todas as contas do plano de contas, abertas por centro de resultado</div>
+
+    <div class="kpi-grid" id="ccReconcile"></div>
+
+    <div class="tbl-card">
+      <div class="tbl-head">
+        <span>Matriz Conta x Centro de Resultado</span>
+        <span id="ccBadge" class="tp-badge">—</span>
+      </div>
+      <div class="tbl-scroll cc-scroll"><table class="dt" id="ccTable"></table></div>
+    </div>
   </section>
+
 
   <!-- COMPARATIVO -->
   <section id="comparativo" class="section">
@@ -817,6 +835,12 @@ table.dt .trow td{border-top:2px solid var(--border);font-weight:600;color:var(-
           <div class="ic" data-emp="PRIME MIT CACHOEIRO" onclick="pickEmp(this)">Prime MIT Cachoeiro</div>
           <div class="ic" data-emp="OMODA VILA VELHA"    onclick="pickEmp(this)">Omoda Vila Velha</div>
           <div class="ic" data-emp="OMODA CACHOEIRO"     onclick="pickEmp(this)">Omoda Cachoeiro</div>
+          <div class="ic" data-emp="JETOUR SERRA"             onclick="pickEmp(this)">Jetour Serra</div>
+          <div class="ic" data-emp="JETOUR CACHOEIRO"         onclick="pickEmp(this)">Jetour Cachoeiro</div>
+          <div class="ic" data-emp="JETOUR LINHARES"          onclick="pickEmp(this)">Jetour Linhares</div>
+          <div class="ic" data-emp="CHERY VITORIA DEPOSITO"   onclick="pickEmp(this)">Chery Vitória Depósito</div>
+          <div class="ic" data-emp="CHERY VILA VELHA DEPOSITO" onclick="pickEmp(this)">Chery Vila Velha Depósito</div>
+          <div class="ic" data-emp="OMODA GUARAPARI"          onclick="pickEmp(this)">Omoda Guarapari</div>
           <div class="ic" data-emp="NOVA"                onclick="pickEmp(this)">+ Nova…</div>
         </div>
         <input class="imp-input" id="empNovo" placeholder="Nome da nova empresa">
@@ -910,7 +934,7 @@ function empData(period, emp) {
   if (!raw) return { recBruta:0, deducoes:0, cmv:0, pessoal:0, admin:0, vendas:0, naoDedt:0,
                      financeiro:0, recLiq:0, lucroBruto:0, despTotal:0, ebit:0, lucro:0,
                      disponivel:0, creditos:0, estoques:0, ativoCirc:0, ativoNCirc:0,
-                     passCirc:0, passNCirc:0, pl:0, cc:[] };
+                     passCirc:0, passNCirc:0, pl:0, ccFull:[] };
   return derive(raw);
 }
 
@@ -1052,7 +1076,7 @@ function nav(id) {
   document.getElementById(id).classList.add('active');
   document.querySelector(`[onclick="nav('${id}')"]`)?.classList.add('active');
   const titles = {visao:'Visão Executiva',dre:'DRE Gerencial',balanco:'Balanço Patrimonial',
-                  kpi:'KPIs Estratégicos',cc:'Centro de Custo',comparativo:'Comparativo Lojas',
+                  kpi:'KPIs Estratégicos',cc:'DRE por Centro de Custo',comparativo:'Comparativo Lojas',
                   historico:'Histórico',horizontal:'Análise Horizontal',receber:'Contas a Receber',pagar:'Contas a Pagar',estoques:'Estoques',adiantamentos:'Adiantamentos',sa:'Serviços Adicionais',intercompany:'Intercompany',fluxo:'Fluxo de Caixa'};
   document.getElementById('pageTitle').textContent = titles[id] || id;
   currentSec = id;
@@ -3985,49 +4009,208 @@ function renderKPI() {
   document.getElementById('kpiAll').innerHTML = html;
 }
 
-// RENDER — CENTRO DE CUSTO
+// RENDER — DRE POR CENTRO DE CUSTO (matriz Conta x Centro de Resultado)
 // ═══════════════════════════════════════════════════════════════════
-let activeCCEmp=null;
+const CC_GRP_ORDER=['3.1','3.2','3.3','3.4','3.5'];
+// Nome encontrado na planilha (raw) > nome de exibição (label), na ordem definida pelo usuário.
+// Centros não mapeados aqui aparecem no final, em ordem alfabética, com o nome original.
+const CC_CENTRO_ORDER=[
+  {raw:'Veiculos Novos CT',          label:'Novos Citroen'},
+  {raw:'Veiculos Novos PG',          label:'Novos Peugeot'},
+  {raw:'Veiculos Novos',             label:'Novos'},
+  {raw:'Veiculos Usado',             label:'Usados'},
+  {raw:'Veiculos Usados Repasse',    label:'Repasse'},
+  {raw:'Peças e Acessorios',         label:'Peças'},
+  {raw:'Acessorios',                 label:'Acessorios'},
+  {raw:'Assistencia Tecnica',        label:'Astec SG'},
+  {raw:'Astec SC',                   label:'Astec SC'},
+  {raw:'Administrativo',             label:'Admin'},
+  {raw:'Diretoria',                  label:'Diretoria'},
+];
+let ccCollapsed=new Set(); // grupos recolhidos pelo usuário (ex: '3.4')
+
+const ccNorm=s=>String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+function ccMapCentro(raw){
+  const hit=CC_CENTRO_ORDER.find(o=>ccNorm(o.raw)===ccNorm(raw));
+  return hit?{label:hit.label,idx:CC_CENTRO_ORDER.indexOf(hit)}:{label:raw,idx:999};
+}
+function ccOrderIdxByLabel(label){
+  const hit=CC_CENTRO_ORDER.find(o=>o.label===label);
+  return hit?CC_CENTRO_ORDER.indexOf(hit):999;
+}
+function ccNivelCompare(a,b){
+  const pa=a.split('.').map(Number),pb=b.split('.').map(Number);
+  for(let i=0;i<Math.max(pa.length,pb.length);i++){const d=(pa[i]||0)-(pb[i]||0);if(d!==0)return d;}
+  return 0;
+}
+
+// Monta toda a base de dados da DRE por Centro de Custo para 1 período + lista de empresas.
+// Reutilizada tanto pela matriz detalhada quanto pelo comparativo entre períodos.
+function ccBuildData(period, empList){
+  const allRowsRaw=[];
+  empList.forEach(emp=>allRowsRaw.push(...(store[period]?.[emp]?.ccFull||[])));
+  // Requisito 2: só entram na aba linhas que realmente possuem Centro de Resultado.
+  const semCentroRows=allRowsRaw.filter(r=>!r.centro||r.centro==='Sem Centro');
+  const allRows=allRowsRaw.filter(r=>r.centro&&r.centro!=='Sem Centro');
+
+  const acctMap={}; // key = nivel+'|'+desc -> { nivel, desc, grp, byCentro:{label:val} }
+  allRows.forEach(r=>{
+    const label=ccMapCentro(r.centro).label;
+    const key=r.nivel+'|'+r.desc;
+    if(!acctMap[key])acctMap[key]={nivel:r.nivel,desc:r.desc,grp:r.grp,byCentro:{}};
+    acctMap[key].byCentro[label]=(acctMap[key].byCentro[label]||0)+r.mov;
+  });
+
+  // Diagnóstico: mesmo código de conta (nivel) usado com descrições diferentes entre lojas.
+  // Sem essa checagem, a 2ª descrição ficaria "escondida" atrás da 1ª sob a mesma chave.
+  const nivelDescs={};
+  allRows.forEach(r=>{(nivelDescs[r.nivel]=nivelDescs[r.nivel]||new Set()).add(r.desc);});
+  const conflitos=Object.entries(nivelDescs).filter(([n,s])=>s.size>1).map(([n,s])=>({nivel:n,descs:[...s]}));
+
+  // Colunas: ordem fixa definida pelo usuário + fallback alfabético para não mapeados.
+  const centrosSet=new Set();
+  Object.values(acctMap).forEach(a=>Object.keys(a.byCentro).forEach(c=>centrosSet.add(c)));
+  let centros=[...centrosSet].sort((a,b)=>ccOrderIdxByLabel(a)-ccOrderIdxByLabel(b)||a.localeCompare(b));
+  // Requisito 1b: centro sem nenhum movimento em nenhuma conta não precisa aparecer.
+  centros=centros.filter(c=>Object.keys(acctMap).some(n=>Math.abs(acctMap[n].byCentro[c]||0)>0.005));
+
+  const byGrp={};
+  Object.keys(acctMap).forEach(key=>{const g=acctMap[key].grp;(byGrp[g]=byGrp[g]||[]).push(key);});
+  Object.values(byGrp).forEach(list=>list.sort((ka,kb)=>ccNivelCompare(acctMap[ka].nivel,acctMap[kb].nivel)));
+
+  const sumGrpByCentro=grp=>{const out={};(byGrp[grp]||[]).forEach(k=>centros.forEach(c=>out[c]=(out[c]||0)+(acctMap[k].byCentro[c]||0)));return out;};
+  const recBrutaVals=sumGrpByCentro('3.1'),deducoesVals=sumGrpByCentro('3.2'),cmvVals=sumGrpByCentro('3.3');
+  const despVals=sumGrpByCentro('3.4'),finVals=sumGrpByCentro('3.5');
+  const recLiqVals={},lucroBrutoVals={},ebitVals={},lucroFinalVals={};
+  centros.forEach(c=>{
+    recLiqVals[c]=(recBrutaVals[c]||0)-(deducoesVals[c]||0);
+    lucroBrutoVals[c]=recLiqVals[c]-(cmvVals[c]||0);
+    ebitVals[c]=lucroBrutoVals[c]-(despVals[c]||0);
+    lucroFinalVals[c]=ebitVals[c]+(finVals[c]||0);
+  });
+
+  // Requisito 3: comparativo Lucro Informado (conta "3") x Calculado (soma dos centros).
+  const semGrp={}; semCentroRows.forEach(r=>semGrp[r.grp]=(semGrp[r.grp]||0)+r.mov);
+  const semContribution=((semGrp['3.1']||0)-(semGrp['3.2']||0))-(semGrp['3.3']||0)-(semGrp['3.4']||0)+(semGrp['3.5']||0);
+  const lucroInformado=-(empList.reduce((a,emp)=>a+(store[period]?.[emp]?.saldo3||0),0));
+  const lucroCalculado=centros.reduce((a,c)=>a+(lucroFinalVals[c]||0),0);
+
+  return {acctMap,centros,byGrp,recBrutaVals,deducoesVals,cmvVals,despVals,finVals,
+    recLiqVals,lucroBrutoVals,ebitVals,lucroFinalVals,
+    lucroInformado,lucroCalculado,semContribution,conflitos,
+    contasMapeadas:Object.keys(acctMap).length, temDados:allRowsRaw.length>0};
+}
+
 function renderCC(){
   if(!activePeriod)return;
   const p=activePeriod,idxs=[...activeFilter].sort(),empList=idxs.map(i=>empresas[i]);
-  const available=empList.filter(emp=>store[p]?.[emp]?.cc?.length);
-  const tabsEl=document.getElementById('ccTabs');
-  if(!available.length){tabsEl.innerHTML='<span style="color:var(--muted);font-size:.8rem">Importe dados para ver o centro de custo.</span>';document.getElementById('ccTable').innerHTML='';if(charts['chartCC']){charts['chartCC'].destroy();delete charts['chartCC'];}return;}
-  if(!available.includes(activeCCEmp))activeCCEmp=available[0];
-  tabsEl.innerHTML=available.map(e=>`<div class="emp-tab${e===activeCCEmp?' active':''}" onclick="selectCCEmp('${e}')">${e}</div>`).join('');
-  renderCCContent();
-}
-function selectCCEmp(e){activeCCEmp=e;renderCC();}
-function renderCCContent(){
-  if(!activePeriod||!activeCCEmp)return;
-  const rows=store[activePeriod]?.[activeCCEmp]?.cc||[];
-  if(!rows.length)return;
-  mkChart('chartCC',{type:'bar',data:{labels:rows.map(r=>r.centro.length>22?r.centro.slice(0,20)+'…':r.centro),
-    datasets:[
-      {label:'Rec.Líq.',data:rows.map(r=>r.recLiq),backgroundColor:'rgba(0,200,160,.7)',borderRadius:4,borderSkipped:false},
-      {label:'Custo+Desp.',data:rows.map(r=>r.custo+r.desp),backgroundColor:'rgba(232,68,90,.6)',borderRadius:4,borderSkipped:false},
-      {label:'Resultado',data:rows.map(r=>r.lucro),backgroundColor:'rgba(245,200,66,.75)',borderRadius:4,borderSkipped:false},
-    ]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top'}},
-      scales:{y:{ticks:{callback:v=>'R$'+(v/1e3).toFixed(0)+'k'}},x:{ticks:{maxRotation:35,font:{size:10}}}}}});
-  let h=`<thead><tr><th>Centro de Resultado</th><th style="text-align:right">Rec. Bruta</th><th style="text-align:right">Deduções</th><th style="text-align:right">Rec. Líq.</th><th style="text-align:right">CMV</th><th style="text-align:right">Despesas</th><th style="text-align:right">Resultado</th><th style="text-align:right">Margem</th></tr></thead><tbody>`;
-  let tR=0,tD=0,tC=0,tDp=0,tL=0;
-  rows.forEach(r=>{
-    const marg=r.rec>0?(r.lucro/r.rec*100).toFixed(1)+'%':'—',mc=r.lucro>=0?'pos':'neg';
-    tR+=r.rec;tD+=r.ded;tC+=r.custo;tDp+=r.desp;tL+=r.lucro;
-    h+=`<tr><td class="lbl">${r.centro}</td>
-      <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:.76rem" class="pos">${r.rec>0?fBRL(r.rec):'—'}</td>
-      <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:.76rem" class="neg">${r.ded>0?fBRL(r.ded):'—'}</td>
-      <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:.76rem">${fBRL(r.recLiq)}</td>
-      <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:.76rem" class="neg">${r.custo>0?fBRL(r.custo):'—'}</td>
-      <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:.76rem" class="neg">${r.desp>0?fBRL(r.desp):'—'}</td>
-      <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:.76rem" class="${mc}">${fBRL(r.lucro)}</td>
-      <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:.74rem" class="${mc}">${marg}</td></tr>`;
+  const badge=document.getElementById('ccBadge'),sub=document.getElementById('ccSub');
+
+  const d=ccBuildData(p,empList);
+  if(!d.temDados){
+    if(badge)badge.textContent='—';
+    if(sub)sub.textContent='Todas as contas do plano de contas, abertas por centro de resultado';
+    document.getElementById('ccTable').innerHTML=`<tr><td style="padding:30px;text-align:center;color:var(--muted)">Importe dados para ver a DRE por centro de custo.</td></tr>`;
+    document.getElementById('ccReconcile').innerHTML='';
+    return;
+  }
+  if(badge)badge.textContent=p;
+  const conflitoTxt=d.conflitos.length
+    ? ` • ⚠ ${d.conflitos.length} código${d.conflitos.length!==1?'s':''} de conta usado${d.conflitos.length!==1?'s':''} com descrições diferentes entre lojas (${d.conflitos.slice(0,2).map(c=>`${c.nivel}: "${c.descs.join('" / "')}"`).join('; ')}${d.conflitos.length>2?'; ...':''}) — cada descrição foi listada como conta separada`
+    : '';
+  if(sub)sub.textContent=(empList.length>1?`Consolidado — ${empList.length} empresas selecionadas`:empList[0])
+    +` • ${d.contasMapeadas} conta${d.contasMapeadas!==1?'s':''} com centro de resultado mapeada${d.contasMapeadas!==1?'s':''}`
+    +conflitoTxt;
+
+  // ── Requisitos 3+4: card de reconciliação Informado x Calculado + contagem de contas ──
+  const diff=d.lucroInformado-d.lucroCalculado;
+  const diffOk=Math.abs(diff)<1;
+  const explained=Math.abs(diff-d.semContribution)<1;
+  let diffSub;
+  if(diffOk) diffSub='✓ bate com o informado na conta "3"';
+  else if(explained) diffSub=`Equivale às contas sem centro de resultado (${fBRL(d.semContribution)})`;
+  else diffSub='⚠ diferença não totalmente explicada — verifique classificação das contas';
+
+  document.getElementById('ccReconcile').innerHTML=`
+    <div class="kpi-card" style="--c:var(--accent)">
+      <div class="kpi-lbl">Lucro Líquido Informado</div>
+      <div class="kpi-val">${fBRL(d.lucroInformado)}</div>
+      <div class="kpi-sub">Conta sintética "3" (SaldoFinal − SaldoInicial)</div>
+    </div>
+    <div class="kpi-card" style="--c:var(--accent2)">
+      <div class="kpi-lbl">Lucro Líquido Calculado</div>
+      <div class="kpi-val">${fBRL(d.lucroCalculado)}</div>
+      <div class="kpi-sub">Soma do resultado de todos os centros exibidos</div>
+    </div>
+    <div class="kpi-card" style="--c:${diffOk?'var(--accent)':'var(--danger)'}">
+      <div class="kpi-lbl">Diferença</div>
+      <div class="kpi-val">${fBRL(diff)}</div>
+      <div class="kpi-sub">${diffSub}</div>
+      ${diffOk?'<span class="badge ok">✓ Reconciliado</span>':'<span class="badge bad">✗ Verificar</span>'}
+    </div>
+    <div class="kpi-card" style="--c:var(--gold)">
+      <div class="kpi-lbl">Contas com Centro Mapeadas</div>
+      <div class="kpi-val">${d.contasMapeadas}</div>
+      <div class="kpi-sub">Todas exibidas na matriz abaixo</div>
+    </div>`;
+
+  // ── Matriz Conta x Centro ────────────────────────────────────────────────
+  let html=`<thead><tr><th style="min-width:230px;position:sticky;left:0;background:var(--surface);z-index:2">Conta</th>`;
+  d.centros.forEach(c=>html+=`<th style="text-align:right;min-width:120px">${c}</th>`);
+  html+=`<th style="text-align:right;min-width:120px;color:var(--gold)">TOTAL</th></tr></thead><tbody>`;
+
+  const rowVals=(label,valsByCentro,cls)=>{
+    let tot=0;
+    let row=`<tr class="${cls}"><td class="lbl" style="position:sticky;left:0;background:var(--surface)">${label}</td>`;
+    d.centros.forEach(c=>{const v=valsByCentro[c]||0;tot+=v;
+      row+=`<td style="text-align:right" class="${v<0?'neg':v>0?'pos':''}">${v===0?'—':fBRL(v)}</td>`;});
+    row+=`<td style="text-align:right;color:var(--gold)">${fBRL(tot)}</td></tr>`;
+    return row;
+  };
+
+  const grpValsMap={'3.1':d.recBrutaVals,'3.2':d.deducoesVals,'3.3':d.cmvVals,'3.4':d.despVals,'3.5':d.finVals};
+
+  CC_GRP_ORDER.forEach(grp=>{
+    const niveis=d.byGrp[grp]||[];
+    const lbl=AN_GROUPS_H[grp]||grp, color=AN_COLORS_H[grp]||'var(--muted)';
+    const collapsed=ccCollapsed.has(grp);
+    const gv=grpValsMap[grp];
+
+    // Requisito 5: o próprio cabeçalho do grupo já traz o somatório das contas abaixo dele.
+    let tot=0;
+    let hrow=`<tr onclick="toggleCCGroup('${grp}')" style="cursor:pointer;background:${color}12">
+      <td class="lbl" style="position:sticky;left:0;background:${color}12;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:${color};border-left:3px solid ${color}">
+        ${collapsed?'▸':'▾'} ${lbl} <span style="font-weight:400;opacity:.7">(${niveis.length})</span>
+      </td>`;
+    d.centros.forEach(c=>{const v=gv[c]||0;tot+=v;
+      hrow+=`<td style="text-align:right;font-weight:700;color:${color}">${v===0?'—':fBRL(v)}</td>`;});
+    hrow+=`<td style="text-align:right;font-weight:700;color:var(--gold)">${fBRL(tot)}</td></tr>`;
+    html+=hrow;
+
+    if(!collapsed){
+      niveis.forEach(key=>{
+        const a=d.acctMap[key];
+        let t=0;
+        html+=`<tr><td class="lbl" style="position:sticky;left:0;background:var(--surface);padding-left:24px" title="${a.nivel}">${a.desc}</td>`;
+        d.centros.forEach(c=>{const v=a.byCentro[c]||0;t+=v;
+          html+=`<td style="text-align:right" class="${v<0?'neg':v>0?'pos':''}">${v===0?'—':fBRL(v)}</td>`;});
+        html+=`<td style="text-align:right">${fBRL(t)}</td></tr>`;
+      });
+    }
+
+    if(grp==='3.2')html+=rowVals('RECEITA LÍQUIDA',d.recLiqVals,'hrow');
+    if(grp==='3.3')html+=rowVals('LUCRO BRUTO',d.lucroBrutoVals,'hrow');
+    if(grp==='3.4')html+=rowVals('RESULTADO OPERACIONAL (EBIT)',d.ebitVals,'hrow');
   });
-  const totMarg=tR>0?(tL/tR*100).toFixed(1)+'%':'—';
-  h+=`<tr class="trow"><td class="lbl">TOTAL</td><td style="text-align:right;font-family:'JetBrains Mono',monospace">${fBRL(tR)}</td><td style="text-align:right;font-family:'JetBrains Mono',monospace">${fBRL(tD)}</td><td style="text-align:right;font-family:'JetBrains Mono',monospace">${fBRL(tR-tD)}</td><td style="text-align:right;font-family:'JetBrains Mono',monospace">${fBRL(tC)}</td><td style="text-align:right;font-family:'JetBrains Mono',monospace">${fBRL(tDp)}</td><td style="text-align:right;font-family:'JetBrains Mono',monospace" class="${tL>=0?'pos':'neg'}">${fBRL(tL)}</td><td style="text-align:right;font-family:'JetBrains Mono',monospace" class="${tL>=0?'pos':'neg'}">${totMarg}</td></tr>`;
-  document.getElementById('ccTable').innerHTML=h+'</tbody>';
+
+  html+=rowVals('LUCRO / PREJUÍZO (CALCULADO)',d.lucroFinalVals,'trow');
+
+  document.getElementById('ccTable').innerHTML=html+'</tbody>';
+}
+
+function toggleCCGroup(grp){
+  if(ccCollapsed.has(grp))ccCollapsed.delete(grp);else ccCollapsed.add(grp);
+  renderCC();
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -4085,6 +4268,7 @@ function parseSheet(wb){
   // hRows: todas as linhas grupo 3 COM centro de resultado (qualquer profundidade)
   // saldo3Map: acumula SaldoFinal da conta raiz exata "3"
   const hRowsRaw=[];
+  const ccFullRaw=[];
   let saldo3Raw=0;
   // descMap: nivel->desc para contas sintéticas (para exibir descrição em qualquer nível)
   const descMap={};
@@ -4173,6 +4357,13 @@ function parseSheet(wb){
     // hRows: grupo 3 COM centro de resultado (regras da análise horizontal)
     if(nivel.startsWith('3')&&centro){
       hRowsRaw.push({nivel,desc,mov,centro});
+    }
+    // ccFullRaw: DRE por Centro de Custo — TODAS as contas analíticas do grupo 3,
+    // com ou sem centro (sem centro cai no bucket "Sem Centro").
+    if(tipo==='A'&&nivel.startsWith('3')){
+      const grp=nivel.slice(0,3);
+      const valor=grp==='3.5'?-mov:Math.abs(mov);
+      ccFullRaw.push({nivel,desc,grp,centro:centro||'Sem Centro',mov:valor});
     }
     // saldo3: conta exata "3" — usa mov (SaldoFinal - SaldoInicial)
     if(nivel==='3') saldo3Raw+=mov;
@@ -4301,30 +4492,22 @@ function parseSheet(wb){
     adtMap[key].sfinal+=r.sfinal;
   });
   const adtRows=Object.values(adtMap).filter(r=>r.sfinal!==0);
-  // Deduplicate: keep only centro rows when available, else use total rows
-  const hasCentroRows=acctTree.some(a=>a.centro);
-  let filteredTree=hasCentroRows?acctTree.filter(a=>a.centro):acctTree.map(a=>({...a,centro:'—'}));
-  const centroMap={};
-  filteredTree.forEach(a=>{
-    if(!a.centro||a.centro==='—')return;
-    const grp=a.nivel.slice(0,3);
-    if(!centroMap[a.centro])centroMap[a.centro]={};
-    centroMap[a.centro][grp]=(centroMap[a.centro][grp]||0)+a.mov;
+  // ccFull: DRE por Centro de Custo — consolida por (nivel, centro), somando
+  // linhas repetidas (mesma conta aparecendo mais de uma vez para o mesmo centro).
+  const ccFullMap={};
+  ccFullRaw.forEach(r=>{
+    const key=r.nivel+'||'+r.centro;
+    if(!ccFullMap[key])ccFullMap[key]={nivel:r.nivel,desc:r.desc,grp:r.grp,centro:r.centro,mov:0};
+    ccFullMap[key].mov+=r.mov;
   });
-  acctTree.length=0;filteredTree.forEach(a=>acctTree.push(a));
+  const ccFull=Object.values(ccFullMap);
   const m=k=>accMov[k]||0, f=k=>accFinal[k]||0;
   // DRE
   const recBruta=Math.abs(m('3.1')),deducoes=Math.abs(m('3.2')),cmv=Math.abs(m('3.3'));
   const despTotal=Math.abs(m('3.4')),financeiro=-(m('3.5'));
   const pessoal=Math.abs(m('3.4.01.01')),admin=Math.abs(m('3.4.01.02'));
   const vendas=Math.abs(m('3.4.01.03')),naoDedt=Math.abs(m('3.4.01.04'))+Math.abs(m('3.4.01.05'));
-  // CC
-  const cc=Object.entries(centroMap).map(([centro,grupos])=>{
-    const rec=Math.abs(grupos['3.1']||0),ded=Math.abs(grupos['3.2']||0);
-    const custo=Math.abs(grupos['3.3']||0),desp=Math.abs(grupos['3.4']||0),fin=-(grupos['3.5']||0);
-    const recLiq=rec-ded,lucro=recLiq-custo-desp+fin;
-    return{centro,rec,ded,custo,desp,fin,recLiq,lucro};
-  }).filter(r=>r.rec>0||r.custo>0||r.desp>0).sort((a,b)=>a.centro.localeCompare(b.centro));
+  // CC (legado — substituído por ccFull, mantido comentado para referência)
   // Balanço
   const disponivel=f('1.1.01'),adiantFornec=f('1.1.02.01'),contasReceber=f('1.1.02.02');
   const cartoesCredito=f('1.1.02.03'),estoques=f('1.1.03'),outrosCredCirc=f('1.1.05');
@@ -4371,7 +4554,7 @@ function parseSheet(wb){
     estNovos,estUsados,estPecas,estTotal,passivoTotal,
     endivColaboradores,endivOperacional,endivFinanceiro,endivNegociavel,
     endivTributario,endivGrupo,endivProprio,
-    cc,acctTree,accMov,accFinal,
+    ccFull,acctTree,accMov,accFinal,
     hRows,saldo3:saldo3Raw,crRows,cpRows,estRows,adtRows,saRows,icRows};
 }
 
@@ -4483,6 +4666,36 @@ function autoDetect(fname){
   updatePPrev();
 
   // Empresa
+  // Empresas novas que combinam palavras genéricas já usadas por outras (ex: "SERRA",
+  // "OMODA", "VITORIA") precisam de checagem explícita por combinação (E, não OU),
+  // feita ANTES do mapa genérico abaixo — senão a palavra isolada seria capturada
+  // por uma empresa já existente (ex: "JETOUR SERRA" cairia em "PASSION SERRA").
+  document.querySelectorAll('.ic').forEach(c=>c.classList.remove('on'));
+  let novaEmpMatched=false;
+  const novaEmpCombo=[
+    {brand:'JETOUR', city:'SERRA',      val:'JETOUR SERRA'},
+    {brand:'JETOUR', city:'CACHOEIRO',  val:'JETOUR CACHOEIRO'},
+    {brand:'JETOUR', city:'LINHARES',   val:'JETOUR LINHARES'},
+    {brand:'OMODA',  city:'GUARAPARI',  val:'OMODA GUARAPARI'},
+  ];
+  for(const e of novaEmpCombo){
+    if(f.includes(e.brand)&&f.includes(e.city)){
+      const ch=document.querySelector(`.ic[data-emp="${e.val}"]`);
+      if(ch){ch.classList.add('on');novaEmpMatched=true;}
+      break;
+    }
+  }
+  // Depósitos (Chery Vitória/Vila Velha) também precisam de combinação explícita,
+  // senão "CHERY"+"VITORIA" seria capturado pela empresa-mãe (CHERY VITORIA).
+  if(!novaEmpMatched&&(f.includes('DEPOSITO')||f.includes('DEPÓSITO'))){
+    let depVal=null;
+    if(f.includes('VITORIA')||f.includes('VITÓRIA'))depVal='CHERY VITORIA DEPOSITO';
+    else if(f.includes('VILA VELHA')||f.includes('VELHA'))depVal='CHERY VILA VELHA DEPOSITO';
+    if(depVal){
+      const ch=document.querySelector(`.ic[data-emp="${depVal}"]`);
+      if(ch){ch.classList.add('on');novaEmpMatched=true;}
+    }
+  }
   const empMap=[
     {keys:['PASSION','SERRA','PSE'],          val:'PASSION SERRA'},
     {keys:['PASSION','VITORIA','PVT'],        val:'PASSION VITORIA'},
@@ -4504,8 +4717,7 @@ function autoDetect(fname){
     {keys:['OMODA','VILA','VELHA','OVV'],     val:'OMODA VILA VELHA'},
     {keys:['OMODA','CACHOEIRO','OCA'],        val:'OMODA CACHOEIRO'},
   ];
-  document.querySelectorAll('.ic').forEach(c=>c.classList.remove('on'));
-  for(const e of empMap){
+  for(const e of (novaEmpMatched?[]:empMap)){
     if(e.keys.some(k=>f.includes(k))){
       const ch=document.querySelector(`.ic[data-emp="${e.val}"]`);
       if(ch){ch.classList.add('on');break;}
